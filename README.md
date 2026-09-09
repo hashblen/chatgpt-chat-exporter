@@ -85,6 +85,15 @@ No install, no server, no account: everything runs locally in your browser.
 
 ---
 
+## 🔧 What's New in v1.1.1
+
+- 🧑‍💻 **Exports now work on guest (not-signed-in) ChatGPT pages.** chatgpt.com's
+  signed-out transcript uses a different renderer — `<li data-message-role>`
+  turns, the user's typed text inside a clickable `<button>`, and an sr-only
+  label class the legacy strips never matched — so a guest page exported
+  **nothing at all**. The ChatGPT adapter now reads that shape too: messages,
+  senders, and markdown come through clean. ([release notes](temporal/release-notes-v1.1.1.md))
+
 ## 🔧 What's New in v1.1.0
 
 - 📦 **GitHub is now the canonical install source, and GreasyFork syncs from it** (issue #34). The GreasyFork listing had gone stale at a version numbered 1.0.0, which made working GitHub installs look like downgrades. This release jumps past it, the userscripts carry `@downloadURL`/`@updateURL` headers so GitHub installs update themselves, and the GreasyFork listing now auto-syncs from this repo — existing installs from either source pick up updates automatically. ([release notes](temporal/release-notes-v1.1.0.md))
@@ -340,7 +349,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/EXPORTER_GUIDE.md](docs/EXPORTE
 
 ## 🚀 Version History
 
-- **v0.12.1** (Current) - Gemini maths export as TeX; fixes a regression that would have deleted them entirely
+- **v1.1.1** (Current) - Exports work on guest/not-signed-in ChatGPT pages; the selector doctor names the guest selector's cascade position
+- **v1.1.0** - GitHub becomes the install source; exports use the tab title; reasoning progress folds into its answer; linear-time citation stripping
+- **v0.12.1** - Gemini maths export as TeX; fixes a regression that would have deleted them entirely
 - **v0.12.0** - ChatGPT Markdown reads the conversation record instead of scraping the page: no scrolling, complete by construction, real citation titles
 - **v0.11.0** - Math recovered from every renderer and never duplicated; opt-in export of regenerated/edited turn history
 - **v0.10.3** - Inline citations export as their label instead of escaped base64

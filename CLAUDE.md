@@ -150,6 +150,30 @@ before trusting any of it — but do not assume a fixture reflects these:
   load the exporter; for ad-hoc testing, CDP-evaluated *synchronous* `eval`
   works but anything after an `await` is subject to page CSP
 
+### Guest (not-signed-in) chatgpt.com DOM notes (observed 2026-09-08, desktop Chrome)
+
+No `data-message-author-role`, no `conversation-turn-*` `data-testid`s, no
+`data-message-id` — a distinct renderer, exported via `li[data-message-role]`:
+
+- The transcript is `<ol data-conversation-transcript>`; each turn is
+  `<li class="_wdUoQG_messageTurn" data-message-role="user|assistant" id="<uuid>">`.
+  Streaming placeholders and the write-only optimistic copy live inside
+  `<template>` elements that `querySelectorAll` never matches.
+- The user's typed text is a `<p data-user-message-copy>` **inside a clickable
+  `<button data-user-message-bubble>`** — serializing the `<li>` loses it because
+  buttons are stripped as UI, so the content root must be the copy node itself
+  (`selectContentRoot` special-case), never the text-length-scoring wrapper.
+- Assistant markdown is `<div data-assistant-markdown>`. Page CSS gives it no
+  `white-space`: pre-wrap, so markdown formatting survives untouched.
+- The sr-only attribution `<h4 class="_wdUoQG_srOnly" data-message-attribution>`
+  does **not** match the legacy `[class*="sr-only"]` strips (case-sensitive
+  `srOnly` vs `sr-only`) — harmless only because the copy node is the content
+  root, so the header is never serialized.
+- Citations/sources render as `<button>` pills, not `<a href>` links, so
+  `collectCitations` finds no source URLs on guest pages (known cosmetic gap).
+- Guest chats use the same signed-out private API, so `canUsePayloadSource`
+  stays off and every guest export takes the sweep path.
+
 ### Live Gemini DOM notes (observed 2026-08-17, desktop Chrome)
 
 Verified against a real signed-in conversation. Re-check before trusting it:

@@ -2100,6 +2100,96 @@ test('shared engine serializes live-observed ChatGPT shapes from synthetic fixtu
     assert.match(content, /\[Image: synthetic chart\]/);
 });
 
+// Guest / not-signed-in chatgpt.com (observed 2026-09-08) renders its
+// transcript as an <ol data-conversation-transcript> of <li data-message-role>
+// turns. There is no data-message-author-role, the user's typed text lives
+// inside a clickable <button data-user-message-bubble>, assistant markdown in
+// <div data-assistant-markdown>, and the sr-only turn label class
+// (_wdUoQG_srOnly) deliberately does not match the legacy sr-only strips.
+function chatGptGuestFixture() {
+    return `<!DOCTYPE html>
+<html>
+<head><title>ChatGPT: Chat, Work, Create & Code with AI</title></head>
+<body>
+    <main>
+        <ol aria-label="Conversation" data-conversation-transcript>
+            <li class="_wdUoQG_messageTurn" data-message-role="user" id="guest-copy-0001">
+                <h4 class="_wdUoQG_srOnly" data-message-attribution="">user said</h4>
+                <div class="_wdUoQG_messageRow">
+                    <div class="_wdUoQG_avatar"></div>
+                    <div class="_wdUoQG_messageGroup">
+                        <div class="_wdUoQG_messageContent">
+                            <button data-user-message-bubble>
+                                <p data-user-message-copy>Summarize the SemGauss-SLAM paper for me.</p>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </li>
+            <li class="_wdUoQG_messageTurn" data-message-role="assistant" id="guest-md-0002">
+                <h4 class="_wdUoQG_srOnly" data-message-attribution="">ChatGPT said</h4>
+                <div data-stream-target>
+                    <div data-assistant-markdown>
+                        <h2>SemGauss-SLAM</h2>
+                        <p>It is a dense <strong>semantic</strong> SLAM system with Gaussian mapter.</p>
+                        <pre><code class="language-bash">git clone https://github.com/example/semgauss-slam</code></pre>
+                    </div>
+                </div>
+                <div class="_wdUoQG_ResponseActionsBar">
+                    <button data-testid="copy-turn-action-button" aria-label="Copy"><span>Copy</span></button>
+                    <button data-testid="regenerate-turn-button" aria-label="Regenerate"><span>Regenerate</span></button>
+                </div>
+            </li>
+        </ol>
+    </main>
+</body>
+</html>`;
+}
+
+test('guest chatgpt.com turns export without UI chrome (data-message-role)', () => {
+    const dom = new JSDOM(chatGptGuestFixture(), {
+        url: 'https://chatgpt.com/?q=guest-fixture'
+    });
+
+    const conversation = engine.extractConversation({
+        document: dom.window.document,
+        provider: 'chatgpt',
+        format: 'markdown'
+    });
+
+    assert.equal(conversation.messages.length, 2);
+    assert.deepEqual(conversation.messages.map(message => message.sender), ['You', 'ChatGPT']);
+    assert.deepEqual(conversation.messages.map(message => message.senderType), ['user', 'assistant']);
+
+    const exported = engine.serializers.markdown(conversation);
+    assert.match(exported, /Summarize the SemGauss-SLAM paper for me\./);
+    assert.match(exported, /## SemGauss-SLAM/);
+    assert.match(exported, /It is a dense \*\*semantic\*\* SLAM system with Gaussian mapter\./);
+    assert.match(exported, /```bash\ngit clone https:\/\/github\.com\/example\/semgauss-slam\n```/);
+    assert.ok(!exported.includes('Copy'), 'action-bar buttons are UI chrome, not content');
+    assert.ok(!exported.includes('said'), 'sr-only attribution labels never reach the export');
+});
+
+test('guest chatgpt.com conversation exports end to end as complete', async () => {
+    const dom = new JSDOM(chatGptGuestFixture(), {
+        url: 'https://chatgpt.com/?q=guest-fixture'
+    });
+    installInnerText(dom.window);
+
+    const conversation = await engine.extractConversationFull({
+        document: dom.window.document,
+        provider: 'chatgpt',
+        format: 'markdown',
+        scroll: false,
+        awaitStreaming: false,
+        sourceFromPayload: false
+    });
+
+    assert.equal(conversation.complete, true);
+    assert.equal(conversation.messages.length, 2);
+    assert.deepEqual(conversation.messages.map(message => message.sender), ['You', 'ChatGPT']);
+});
+
 test('ChatGPT HTML exporter restores structured code and table markup', async () => {
     const { content } = await runExporter('exporter-html.js', chatGptFixture());
 
@@ -2164,7 +2254,10 @@ test('the selector doctor reports a healthy page and names the drift on an unhea
     const bad = await engine.diagnose({ document: drifted.window.document, provider: 'chatgpt' });
     assert.equal(bad.messageSelectors[0].valid, 0, 'the preferred data-attribute selector no longer matches');
     assert.ok(bad.messagesFound > 0, 'the export still works, which is what makes the drift silent');
-    assert.ok(bad.warnings.some(warning => /Falling back to selector #4/.test(warning)),
+    // #5 is the 1-indexed position of '.group/conversation-turn': the guest
+    // 'li[data-message-role]' entry sits earlier in the cascade and pushes the
+    // old class-based entry down one.
+    assert.ok(bad.warnings.some(warning => /Falling back to selector #5/.test(warning)),
         'the doctor must name the fallback rather than report a clean bill of health');
 });
 

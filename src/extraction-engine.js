@@ -56,7 +56,10 @@
         'article[data-testid*="conversation-turn"]',
         'div[data-testid^="conversation-turn-"]',
         'div[data-testid="conversation-turn"]',
-        '.group\\/conversation-turn'
+        '.group\\/conversation-turn',
+        // Guest / not-signed-in chatgpt.com renders its transcript as an
+        // ordered list of <li data-message-role="user|assistant"> turns.
+        'li[data-message-role]'
     ].join(', ');
 
     // Gemini's own wrapper, .conversation-container, holds a *pair* — one
@@ -106,6 +109,7 @@
             documentTitleSuffix: /\s*[-–—|]\s*ChatGPT\s*$/i,
             messageSelectors: [
                 'div[data-message-author-role]',
+                'li[data-message-role]',
                 'article[data-testid*="conversation-turn"]',
                 'div[data-testid="conversation-turn"]',
                 '.group\\/conversation-turn',
@@ -114,7 +118,8 @@
             contentSelectors: [
                 '.markdown, .prose, [class*="markdown"], [class*="prose"]',
                 '[data-message-content], [data-testid*="content"]',
-                '.whitespace-pre-wrap, [class*="whitespace"]'
+                '.whitespace-pre-wrap, [class*="whitespace"]',
+                '[data-user-message-copy], [data-assistant-markdown]'
             ],
             // ChatGPT keeps the conversation name in document.title. Its
             // message bodies also contain ordinary h1 elements, so preferring
@@ -518,7 +523,17 @@
             '[aria-label*="more"]'
         ].join(',');
 
-        queryAll(clone, uiSelector).forEach(element => element.remove());
+        queryAll(clone, uiSelector).forEach(element => {
+            // The guest (not-signed-in) renderer wraps the user's typed text
+            // in a clickable bubble <button data-user-message-bubble> whose
+            // child carries the actual copy. Stripping it as UI would delete
+            // the message, so a button that owns a [data-user-message-copy]
+            // descendant is kept as content.
+            if (element.tagName?.toLowerCase() === 'button' && element.querySelector?.('[data-user-message-copy]')) {
+                return;
+            }
+            element.remove();
+        });
     }
 
     function detectLanguage(block) {
@@ -1259,6 +1274,18 @@
 
     function selectContentRoot(messageElement, provider) {
         const scope = messageScope(messageElement, provider);
+
+        // Guest (not-signed-in) chatgpt.com turns are <li data-message-role>
+        // whose real content lives in a nested copy node; the wrapper also
+        // carries sr-only labels and action bars, so the generic text-length
+        // scoring would pick the wrapper and serialize UI chrome (the typed
+        // user text even sits inside a stripped <button>). When a turn is a
+        // guest-style li, prefer its copy node outright.
+        if (typeof scope?.matches === 'function' && scope.matches?.('li[data-message-role]')) {
+            const copy = scope.querySelector?.('[data-user-message-copy], [data-assistant-markdown]');
+            if (copy) return copy;
+        }
+
         const roots = Array.from(new Set([messageElement, scope].filter(Boolean)));
         const candidates = [...roots];
 
@@ -1279,9 +1306,9 @@
         if (tag === 'user-query') return { sender: 'You', reliable: true };
         if (tag === 'model-response') return { sender: provider.assistantName, reliable: true };
 
-        const roleCarrier = matches(element, '[data-message-author-role], [data-author], [data-sender]') ?
-            element : element.querySelector?.('[data-message-author-role], [data-author], [data-sender]');
-        const role = roleCarrier?.getAttribute('data-message-author-role') || roleCarrier?.getAttribute('data-author') || roleCarrier?.getAttribute('data-sender');
+        const roleCarrier = matches(element, '[data-message-author-role], [data-message-role], [data-author], [data-sender]') ?
+            element : element.querySelector?.('[data-message-author-role], [data-message-role], [data-author], [data-sender]');
+        const role = roleCarrier?.getAttribute('data-message-author-role') || roleCarrier?.getAttribute('data-message-role') || roleCarrier?.getAttribute('data-author') || roleCarrier?.getAttribute('data-sender');
         if (role) {
             const normalizedRole = role.toLowerCase();
             if (normalizedRole === 'user') return { sender: 'You', reliable: true };
